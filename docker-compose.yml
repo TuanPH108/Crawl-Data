@@ -1,0 +1,198 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_logs:/var/log/rabbitmq
+    networks:
+      - crawler_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  mongodb:
+    image: mongo:latest
+    container_name: crawler_mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - crawler_network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  backend:
+    container_name: crawler_backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672/
+      - MONGODB_URI=mongodb://root:example@mongodb:27017/
+      - PYTHONPATH=/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - crawler_network
+    volumes:
+      - backend_logs:/app/logs
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: always
+
+  backend_worker:
+    container_name: crawler_backend_worker
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - CELERY_BROKER_URL=amqp://admin:admin123@rabbitmq:5672/
+      - CELERY_RESULT_BACKEND=rpc://
+      - MONGODB_URI=mongodb://root:example@mongodb:27017/
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP=true
+      - CELERY_BROKER_CONNECTION_MAX_RETRIES=0
+      - CELERY_BROKER_CONNECTION_TIMEOUT=120
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - crawler_network
+    command: >
+      sh -c "
+        echo 'Waiting for RabbitMQ...' &&
+        while ! nc -z rabbitmq 5672; do
+          sleep 1
+        done &&
+        echo 'RabbitMQ is up!' &&
+        celery -A app.celery_app:celery_app worker --loglevel=info -Q delegate_queue -c 1 -P solo --without-gossip --without-mingle --without-heartbeat --time-limit=3600 --soft-time-limit=3000
+      "
+    volumes:
+      - backend_logs:/app/logs
+    working_dir: /app
+    restart: always
+
+  scraper_worker:
+    container_name: crawler_scraper
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile
+    environment:
+      - CELERY_BROKER_URL=amqp://admin:admin123@rabbitmq:5672/
+      - CELERY_RESULT_BACKEND=rpc://
+      - MONGODB_URI=mongodb://root:example@mongodb:27017/
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - crawler_network
+    command: celery -A celery_app:celery_app worker --loglevel=info -Q scraper_queue -c 8 -P eventlet --without-gossip --without-mingle --without-heartbeat --time-limit=3600 --soft-time-limit=3000
+    volumes:
+      - scraper_logs:/app/logs
+    working_dir: /app
+    restart: always
+
+  crawl_zh:
+    container_name: crawler_scraper_zh
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile
+    environment:
+      - CELERY_BROKER_URL=amqp://admin:admin123@rabbitmq:5672/
+      - CELERY_RESULT_BACKEND=rpc://
+      - MONGODB_URI=mongodb://root:example@mongodb:27017/
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - crawler_network
+    command: celery -A celery_app:celery_app worker --loglevel=info -Q scraper_queue -c 8 -P eventlet --without-gossip --without-mingle --without-heartbeat --time-limit=3600 --soft-time-limit=3000
+    volumes:
+      - scraper_logs:/app/logs
+    working_dir: /app
+    restart: always
+
+  craw_vi:
+    container_name: crawler_scraper_vi
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile
+    environment:
+      - CELERY_BROKER_URL=amqp://admin:admin123@rabbitmq:5672/
+      - CELERY_RESULT_BACKEND=rpc://
+      - MONGODB_URI=mongodb://root:example@mongodb:27017/
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - crawler_network
+    command: celery -A celery_app:celery_app worker --loglevel=info -Q scraper_queue -c 8 -P eventlet --without-gossip --without-mingle --without-heartbeat --time-limit=3600 --soft-time-limit=3000
+    volumes:
+      - scraper_logs:/app/logs
+    working_dir: /app
+    restart: always
+
+  frontend:
+    container_name: crawler_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - crawler_network
+    restart: always
+
+networks:
+  crawler_network:
+    driver: bridge
+
+volumes:
+  rabbitmq_data:
+  rabbitmq_logs:
+  mongodb_data:
+  backend_logs:
+  scraper_logs:

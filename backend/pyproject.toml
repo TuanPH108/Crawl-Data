@@ -1,0 +1,22 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Backend for Crawling System"
+authors = [{name = "Tuan Phan", email = "ph.hoangtuan18@gmail.com"}]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.104.1,<1.0.0",
+    "uvicorn>=0.24.0,<1.0.0",
+    "celery>=5.3.4,<6.0.0",
+    "redis>=5.0.1,<6.0.0",
+    "pydantic>=2.4.2,<3.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+    "pymongo>=4.13.0,<5.0.0"
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api" 
+[tool.poetry]
+package-mode = false
