@@ -96,7 +96,7 @@ class NewsSpider(scrapy.Spider):
             'date': 'span.time, div.date, div.time, div.col-md-4.mb-2'
         },
         'thoidai.com.vn': {
-            'title': 'h1.title, h1, h1.article-detail-title.f0',
+            'title': 'h1.article-detail-title.f0, h1[class="article-detail-title f0"], h1.article-detail-title',
             'content': 'div.__MASTERCMS_CONTENT.fw.f1.mb20.clearfix p, div.article-desc',
             'date': 'span.article-detail-date.rt'
         },
