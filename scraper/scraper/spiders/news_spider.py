@@ -92,12 +92,12 @@ class NewsSpider(scrapy.Spider):
         },
         'vovworld.vn/vi-VN.vov': {
             'title': 'h1.title, h1, h1.article-title.mb-0',
-            'content': 'div.text-long p',
+            'content': 'div.text-long p, div.article__body.cms-body p',
             'date': 'span.time, div.date, div.time, div.col-md-4.mb-2'
         },
         'thoidai.com.vn': {
             'title': 'h1.title, h1, h1.article-detail-title.f0',
-            'content': 'div.__MASTERCMS_CONTENT.fw.f1.mb20.clearfix p',
+            'content': 'div.__MASTERCMS_CONTENT.fw.f1.mb20.clearfix p, div.article-desc',
             'date': 'span.article-detail-date.rt'
         },
         'sggp.org.vn': {
@@ -215,6 +215,24 @@ class NewsSpider(scrapy.Spider):
         for url in self.start_urls:
             if url not in self.crawled_urls:
                 logger.info(f"Starting crawl: {url}")
+                
+                # Define base headers
+                headers = {
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'vi,en-US;q=0.7,en;q=0.3',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                    'Referer': 'https://www.google.com/',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+                
+                # Add special headers for QDND
+                if 'qdnd.vn' in url:
+                    logger.info(f"QDND request details:")
+                    logger.info(f"Headers: {self.custom_settings['DEFAULT_REQUEST_HEADERS']}")
+                    logger.info(f"Download delay: {self.custom_settings['DOWNLOAD_DELAY']}")
+                    logger.info(f"Concurrent requests per domain: {self.custom_settings['CONCURRENT_REQUESTS_PER_DOMAIN']}")
+                
                 yield scrapy.Request(
                     url=url,
                     callback=self.parse,
@@ -222,16 +240,11 @@ class NewsSpider(scrapy.Spider):
                     meta={
                         'download_timeout': self.request_timeout,
                         'dont_redirect': True,
-                        'handle_httpstatus_list': [301, 302, 403, 404, 500],
-                        'dont_merge_cookies': False
+                        'handle_httpstatus_list': [301, 302, 403, 404, 500, 429],
+                        'dont_merge_cookies': False,
+                        'download_slot': urlparse(url).hostname
                     },
-                    headers={
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'vi,en-US;q=0.7,en;q=0.3',
-                        'Cache-Control': 'no-cache',
-                        'Pragma': 'no-cache',
-                        'Referer': 'https://www.google.com/'
-                    },
+                    headers=headers,
                     dont_filter=True
                 )
 
@@ -239,14 +252,26 @@ class NewsSpider(scrapy.Spider):
         url = failure.request.url
         self.failed_urls.add(url)
         
+        # Add special logging for QDND
+        if 'qdnd.vn' in url:
+            logger.error(f"QDND error details for {url}:")
+            logger.error(f"Error type: {type(failure.value).__name__}")
+            logger.error(f"Error value: {str(failure.value)}")
+            if hasattr(failure.value, 'response'):
+                logger.error(f"Response status: {failure.value.response.status}")
+                logger.error(f"Response headers: {failure.value.response.headers}")
+        
         if failure.check(HttpError):
             # Xử lý HTTP error
             if failure.value.response.status in [403, 429]:
                 # Rate limit, sleep longer
-                time.sleep(random.uniform(5, 10))
+                sleep_time = random.uniform(10, 20)  # Tăng thời gian sleep cho QDND
+                logger.warning(f"Rate limit detected for {url}, sleeping for {sleep_time} seconds")
+                time.sleep(sleep_time)
         elif failure.check(TimeoutError):
             # Tăng timeout cho retry
             failure.request.meta['download_timeout'] *= 2
+            logger.warning(f"Timeout for {url}, increased timeout to {failure.request.meta['download_timeout']}")
 
     def parse(self, response):
         try:
@@ -538,13 +563,19 @@ class NewsSpider(scrapy.Spider):
             if detected_lang in ['zh-cn', 'zh-tw']:
                 detected_lang = 'zh'
                 
-            if detected_lang != language_code:
+            # For VOV World, trust the URL path more than language detection
+            if 'vovworld.vn' in domain:
+                if '/vi-VN.vov' in response.url:
+                    language_code = 'vi'
+                elif '/zh-CN.vov' in response.url:
+                    language_code = 'zh'
+            # For other domains, only warn about language mismatch but don't drop the article
+            elif detected_lang != language_code:
                 logger.warning(f"Language mismatch for {response.url}: detected {detected_lang}, expected {language_code}")
-                return
-                
+            
         except LangDetectException as e:
             logger.error(f"Language detection failed for {response.url}: {str(e)}")
-            return
+            # Don't return here, continue processing with the language code from URL
         
         # Lấy date
         date_selector = selectors.get('date', 'span.date, div.time, div.date, time')
@@ -587,7 +618,7 @@ class NewsSpider(scrapy.Spider):
             'content': content,
             'date': date,
             'domain': domain,
-            'language': language_code,
+            'language': language_code,  # Use the language code from URL path
             'crawled_at': datetime.now().isoformat(),
             'task_id': self.task_id,
             'meta': {
@@ -595,7 +626,7 @@ class NewsSpider(scrapy.Spider):
                 'keywords': self.extract_meta_content(response, 'keywords'),
                 'language': self.extract_meta_content(response, 'language'),
                 'robots': self.extract_meta_content(response, 'robots'),
-                'detected_language': detected_lang
+                'detected_language': detected_lang  # Store detected language in meta for reference
             }
         }
         

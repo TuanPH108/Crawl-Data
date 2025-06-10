@@ -2,7 +2,6 @@ import os
 import sys
 import time
 import logging
-import subprocess
 from datetime import datetime
 import psutil
 from multiprocessing import Process
@@ -10,6 +9,9 @@ from typing import List
 import glob
 from urllib.parse import urlparse
 import math
+
+from scrapy.crawler import CrawlerProcess
+from scrapy.utils.project import get_project_settings
 
 # Create logs directory if it doesn't exist
 os.makedirs('logs', exist_ok=True)
@@ -20,7 +22,7 @@ process_error_handler = logging.FileHandler('logs/process_errors.log')
 process_error_handler.setLevel(logging.ERROR)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),  # Console output
@@ -58,54 +60,40 @@ def log_running_processes():
             pass
 
 def run_scrapy_spider(urls: List[str], process_id: int, collection_name: str):
-    urls_str = ','.join(urls)
-    cmd = [
-        sys.executable, '-m', 'scrapy', 'crawl', 'news_spider',
-        '-a', f'urls={urls_str}',
-        '-a', f'collection_name={collection_name}',
-        '--loglevel=INFO'
-    ]
     try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-            bufsize=1
-        )
+        # Store original working directory to restore later
+        current_dir = os.getcwd()
+        logger.debug(f"Process {process_id}: Original CWD: {current_dir}")
         
-        # Set timeout
-        timeout = 7200  # 2 hours
-        start_time = time.time()
+        # Change to the scrapy project root directory
+        os.chdir('scraper')
+        logger.debug(f"Process {process_id}: Changed CWD to: {os.getcwd()}")
+        logger.debug(f"Process {process_id}: sys.path before settings: {sys.path}")
+
+        # Set the Scrapy settings module environment variable
+        os.environ['SCRAPY_SETTINGS_MODULE'] = 'scraper.settings'
+        logger.debug(f"Process {process_id}: SCRAPY_SETTINGS_MODULE set to: {os.environ['SCRAPY_SETTINGS_MODULE']}")
+
+        settings = get_project_settings()
+        logger.debug(f"Process {process_id}: Scrapy settings loaded. LOG_LEVEL: {settings.get('LOG_LEVEL')}")
         
-        while True:
-            if time.time() - start_time > timeout:
-                process.terminate()
-                logger.warning(f"Process {process_id} timeout")
-                break
-                
-            if process.poll() is not None:
-                break
-                
-            # Read output with timeout
-            try:
-                output = process.stdout.readline()
-                if output:
-                    logger.info(output.strip())
-            except:
-                break
-                
-            time.sleep(0.1)
-            
+        process = CrawlerProcess(settings)
+        
+        # Add spider to the process
+        # The spider name 'news_spider' must match the name attribute in NewsSpider class
+        process.crawl('news_spider', urls=urls, task_id=str(process_id), collection_name=collection_name)
+        
+        logger.info(f"Starting Scrapy process {process_id} with URLs: {urls}")
+        process.start()  # The script will block here until all crawls are finished
+        logger.info(f"Scrapy process {process_id} finished.")
+
     except Exception as e:
-        logger.error(f"Process error: {str(e)}")
+        logger.error(f"Process error for Scrapy process {process_id}: {str(e)}")
+        logger.error(f"Full traceback: ", exc_info=True) # Log full traceback
     finally:
-        # Ensure process is killed
-        try:
-            process.terminate()
-            process.wait(timeout=5)
-        except:
-            process.kill()
+        # Change back to the original directory after the spider finishes
+        os.chdir(current_dir)
+        logger.debug(f"Changed back to original working directory: {os.getcwd()}")
 
 def calculate_optimal_processes(url_count: int, total_processes: int) -> int:
     """
@@ -177,26 +165,25 @@ def main():
     logger.info("Created logs directory")
     
     list_urls_vi = [
-        "https://nhandan.vn/",
-        "https://www.qdnd.vn/",
-        "https://www.vietnamplus.vn/",
-        "https://baochinhphu.vn/",
-        "https://cand.com.vn/",
-        "https://vovworld.vn/vi-VN.vov",
-        "https://thoidai.com.vn/",
-        "https://www.sggp.org.vn/",
-        # "https://vnanet.vn/",
+        # "https://nhandan.vn/",
+        # "https://www.qdnd.vn/",
+        # "https://www.vietnamplus.vn/",
+        # "https://baochinhphu.vn/",
+        # "https://cand.com.vn/",
+        # "https://vovworld.vn/vi-VN.vov",
+        # "https://thoidai.com.vn/",
+        # "https://www.sggp.org.vn/",
     ]
     list_urls_zh = [
-        # "https://cn.nhandan.vn/",
-        # "https://cn.qdnd.vn/",
-        # "https://zh.vietnamplus.vn/",
-        # "https://cn.baochinhphu.vn/",
-        # "https://cn.cand.com.vn/",
-        # "https://vovworld.vn/zh-CN.vov",
-        # "https://shidai.thoidai.com.vn/",
-        # "https://cn.gqgp.org.vn/",
-        # "https://vnanet.vn/zh/"
+        "https://cn.nhandan.vn/",
+        "https://cn.qdnd.vn/",
+        "https://zh.vietnamplus.vn/",
+        "https://zh.vietnamplus.vn/topic/tp-164.vnp",
+        "https://cn.baochinhphu.vn/",
+        "https://cn.cand.com.vn/",
+        "https://vovworld.vn/zh-CN.vov",
+        "https://shidai.thoidai.com.vn/",
+        "https://cn.sggp.org.vn/",
     ]
     
     logger.info(f"Total Vietnamese URLs: {len(list_urls_vi)}")
