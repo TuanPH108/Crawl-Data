@@ -169,20 +169,20 @@ def main():
         # "https://www.qdnd.vn/",
         # "https://www.vietnamplus.vn/",
         # "https://baochinhphu.vn/",
-        "https://cand.com.vn/",
-        "https://vovworld.vn/vi-VN.vov",
-        "https://thoidai.com.vn/",
-        "https://www.sggp.org.vn/",
+        # "https://cand.com.vn/",
+        # "https://vovworld.vn/vi-VN.vov",
+        # "https://thoidai.com.vn/",
+        # "https://www.sggp.org.vn/",
     ]
     list_urls_zh = [
-        # "https://cn.nhandan.vn/",
-        # "https://cn.qdnd.vn/",
-        # "https://zh.vietnamplus.vn/",
-        # "https://cn.baochinhphu.vn/",
-        # "https://cn.cand.com.vn/",
-        # "https://vovworld.vn/zh-CN.vov",
-        # "https://shidai.thoidai.com.vn/",
-        # "https://cn.sggp.org.vn/",
+        "https://cn.nhandan.vn/",
+        "https://cn.qdnd.vn/",
+        "https://zh.vietnamplus.vn/",
+        "https://cn.baochinhphu.vn/",
+        "https://cn.cand.com.vn/",
+        "https://vovworld.vn/zh-CN.vov",
+        "https://shidai.thoidai.com.vn/",
+        "https://cn.sggp.org.vn/",
     ]
     
     logger.info(f"Total Vietnamese URLs: {len(list_urls_vi)}")

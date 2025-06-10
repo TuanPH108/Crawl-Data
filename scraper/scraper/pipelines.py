@@ -26,28 +26,62 @@ pipeline_logger.addHandler(logging.StreamHandler(sys.stdout))
 
 class LanguageDetectPipeline:
     def process_item(self, item, spider):
+        # Get text for language detection
         text = (item.get('title', '') + ' ' + item.get('content', ''))[:1000]
+        if not text.strip():
+            pipeline_logger.warning(f"Empty text for language detection - URL: {item.get('url')}")
+            raise DropItem("Empty text for language detection")
+
         try:
-            lang = detect(text)
-            if lang == 'vi':
-                item['language'] = 'vi'
-            elif lang in ['zh-cn', 'zh-tw', 'zh']:
-                item['language'] = 'zh'
+            # First check if language is already set and valid
+            if item.get('language') not in ['zh', 'vi']:
+                pipeline_logger.info(f"Invalid language code in item: {item.get('language')} - URL: {item.get('url')}")
+                raise DropItem(f"Invalid language code: {item.get('language')}")
+
+            # Perform language detection
+            detected_lang = detect(text)
+            pipeline_logger.info(f"[Language Detection] URL: {item.get('url')} - Detected: {detected_lang}, Item language: {item.get('language')}")
+
+            # Map detected language to expected format
+            if detected_lang in ['zh-cn', 'zh-tw', 'zh']:
+                detected_lang = 'zh'
+                pipeline_logger.info(f"[Language Mapping] URL: {item.get('url')} - Mapped {detected_lang} to zh")
+            elif detected_lang == 'vi':
+                detected_lang = 'vi'
             else:
-                # Skip non-zh/vi content
-                pipeline_logger.info(f"Skipping non-zh/vi content for URL: {item.get('url')} - Detected language: {lang}")
-                raise DropItem(f"Non-zh/vi content detected: {lang}")
+                pipeline_logger.info(f"[Language Rejection] URL: {item.get('url')} - Skipping non-zh/vi content: {detected_lang}")
+                raise DropItem(f"Non-zh/vi content detected: {detected_lang}")
+
+            # Verify language matches item's language
+            if detected_lang != item.get('language'):
+                pipeline_logger.warning(
+                    f"[Language Mismatch] URL: {item.get('url')} - "
+                    f"Item language: {item.get('language')}, Detected: {detected_lang}"
+                )
+                raise DropItem(f"Language mismatch: item={item.get('language')}, detected={detected_lang}")
+
+            # Update item with detected language
+            item['language'] = detected_lang
+            item['meta'] = item.get('meta', {})
+            item['meta']['detected_language'] = detected_lang
+            item['meta']['language_detection_confidence'] = 'high'
+
+            pipeline_logger.info(f"[Language Detection Success] URL: {item.get('url')} - Final language: {detected_lang}")
+            return item
+
         except Exception as e:
             if isinstance(e, DropItem):
                 raise
-            pipeline_logger.error(json.dumps({
+            error_info = {
                 'url': item.get('url', 'unknown'),
-                'error_type': 'lỗi_phát_hiện_ngôn_ngữ',
+                'error_type': 'language_detection_error',
                 'error_message': str(e),
+                'detected_language': detected_lang if 'detected_lang' in locals() else 'unknown',
+                'item_language': item.get('language', 'unknown'),
                 'timestamp': datetime.utcnow().isoformat()
-            }, ensure_ascii=False))
+            }
+            pipeline_logger.error(json.dumps(error_info, ensure_ascii=False))
             raise DropItem(f"Language detection failed: {str(e)}")
-        return item
 
 class MongoDBPipeline:
     def __init__(self):
@@ -106,39 +140,49 @@ class MongoDBPipeline:
             pipeline_logger.error(json.dumps(error_info, ensure_ascii=False))
 
     def process_item(self, item, spider):
-        # Only process items with language 'zh' or 'vi'
-        if item.get('language') not in ['zh', 'vi']:
-            self.logger.info(f"Skipping document with invalid language: {item.get('language')} for URL: {item.get('url')}")
-            raise DropItem(f"Invalid language: {item.get('language')}")
-
-        item['crawl_status'] = 'success'
-        item['crawl_time'] = datetime.utcnow()
         try:
+            # Strict validation before saving to MongoDB
+            if not item.get('language') in ['zh', 'vi']:
+                self.logger.warning(
+                    f"[MongoDB Rejection] URL: {item.get('url')} - "
+                    f"Invalid language: {item.get('language')}"
+                )
+                raise DropItem(f"Invalid language for MongoDB: {item.get('language')}")
+
+            # Verify language detection confidence
+            if item.get('meta', {}).get('language_detection_confidence') != 'high':
+                self.logger.warning(
+                    f"[MongoDB Rejection] URL: {item.get('url')} - "
+                    f"Low language detection confidence"
+                )
+                raise DropItem("Low language detection confidence")
+
             # Check required fields
-            required_fields = ['url', 'title', 'content', 'language']
-            for field in required_fields:
-                if not item.get(field):
-                    error_msg = f"Missing required field: {field}"
-                    pipeline_logger.error(json.dumps({
-                        'error_type': 'missing_field',
-                        'error_message': error_msg,
-                        'url': item.get('url', 'unknown'),
-                        'title': item.get('title', 'unknown'),
-                        'domain': item.get('domain', 'unknown'),
-                        'language': item.get('language', 'unknown'),
-                        'timestamp': datetime.utcnow().isoformat()
-                    }, ensure_ascii=False))
-                    item['crawl_status'] = 'failed'
-                    item['error_message'] = error_msg
-                    return item
-            
+            required_fields = ['url', 'title', 'content', 'language', 'domain']
+            missing_fields = [field for field in required_fields if not item.get(field)]
+            if missing_fields:
+                error_msg = f"Missing required fields: {', '.join(missing_fields)}"
+                self.logger.error(json.dumps({
+                    'error_type': 'missing_required_fields',
+                    'error_message': error_msg,
+                    'url': item.get('url', 'unknown'),
+                    'missing_fields': missing_fields,
+                    'timestamp': datetime.utcnow().isoformat()
+                }, ensure_ascii=False))
+                raise DropItem(error_msg)
+
             # Add timestamp
             item['crawled_at'] = datetime.utcnow()
             
             try:
                 # Add new with validation
                 result = self.collection.insert_one(dict(item))
-                pipeline_logger.info(f"Added new document - URL: {item['url']} - Language: {item['language']} - ObjectId: {result.inserted_id}")
+                self.logger.info(
+                    f"[MongoDB Success] URL: {item['url']} - "
+                    f"Language: {item['language']} - "
+                    f"ObjectId: {result.inserted_id} - "
+                    f"Collection: {self.collection.name}"
+                )
             except DuplicateKeyError:
                 # Update if URL exists
                 result = self.collection.update_one(
@@ -147,27 +191,31 @@ class MongoDBPipeline:
                 )
                 # Get the document to log its _id
                 doc = self.collection.find_one({'url': item['url']})
-                pipeline_logger.info(f"Updated document - URL: {item['url']} - Language: {item['language']} - ObjectId: {doc['_id'] if doc else 'unknown'}")
+                self.logger.info(
+                    f"[MongoDB Update] URL: {item['url']} - "
+                    f"Language: {item['language']} - "
+                    f"ObjectId: {doc['_id'] if doc else 'unknown'} - "
+                    f"Collection: {self.collection.name}"
+                )
             
             return item
             
         except OperationFailure as e:
             error_msg = f"MongoDB operation failed: {str(e)}"
-            pipeline_logger.error(json.dumps({
+            self.logger.error(json.dumps({
                 'error_type': 'mongodb_operation_error',
                 'error_message': error_msg,
                 'url': item.get('url', 'unknown'),
                 'title': item.get('title', 'unknown'),
                 'domain': item.get('domain', 'unknown'),
                 'language': item.get('language', 'unknown'),
+                'collection': self.collection.name,
                 'timestamp': datetime.utcnow().isoformat()
             }, ensure_ascii=False))
-            item['crawl_status'] = 'failed'
-            item['error_message'] = error_msg
-            return item
+            raise DropItem(error_msg)
         except Exception as e:
             error_msg = f"Unknown error in process_item: {str(e)}"
-            pipeline_logger.error(json.dumps({
+            self.logger.error(json.dumps({
                 'error_type': 'unknown_error',
                 'error_message': error_msg,
                 'stack_trace': traceback.format_exc(),
@@ -175,8 +223,7 @@ class MongoDBPipeline:
                 'title': item.get('title', 'unknown'),
                 'domain': item.get('domain', 'unknown'),
                 'language': item.get('language', 'unknown'),
+                'collection': self.collection.name,
                 'timestamp': datetime.utcnow().isoformat()
             }, ensure_ascii=False))
-            item['crawl_status'] = 'failed'
-            item['error_message'] = error_msg
-            return item 
+            raise DropItem(error_msg) 

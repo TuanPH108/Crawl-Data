@@ -577,28 +577,32 @@ class NewsSpider(scrapy.Spider):
                 return
                 
             detected_lang = detect(text_to_check)
-            logger.info(f"Detected language: {detected_lang}, Expected: {language_code}")
+            logger.info(f"Detected language: {detected_lang}, Expected: {language_code} for URL: {response.url}")
             
             # Map detected language to expected format
-            if detected_lang in ['zh-cn', 'zh-tw']:
+            if detected_lang in ['zh-cn', 'zh-tw', 'zh']:
                 detected_lang = 'zh'
-            elif detected_lang == 'en':
-                logger.info(f"Skipping English content for URL: {response.url}")
+                logger.info(f"Mapped {detected_lang} to zh for URL: {response.url}")
+            elif detected_lang == 'vi':
+                detected_lang = 'vi'
+            else:
+                logger.info(f"Skipping non-zh/vi content - Detected: {detected_lang} for URL: {response.url}")
                 return
                 
-            # Final language check - only accept zh or vi
-            if detected_lang not in ['zh', 'vi']:
-                logger.info(f"Skipping non-zh/vi content for URL: {response.url}")
-                return
-                
-            # Update language code based on detection if needed
+            # Verify language matches expected language from URL
             if language_code not in ['zh', 'vi']:
-                language_code = detected_lang
-            elif language_code != detected_lang:
-                logger.warning(f"Language mismatch for {response.url}: detected {detected_lang}, expected {language_code}")
-                # Trust the detected language if it's zh or vi
+                logger.warning(f"Invalid language code from URL: {language_code} for URL: {response.url}")
+                return
+                
+            if detected_lang != language_code:
+                logger.warning(
+                    f"Language mismatch for {response.url}: "
+                    f"detected {detected_lang}, expected {language_code}"
+                )
+                # Only trust the detected language if it's zh or vi
                 if detected_lang in ['zh', 'vi']:
                     language_code = detected_lang
+                    logger.info(f"Updated language code to {language_code} based on detection")
                 else:
                     logger.info(f"Skipping content due to language mismatch for URL: {response.url}")
                     return
@@ -609,7 +613,17 @@ class NewsSpider(scrapy.Spider):
             if language_code not in ['zh', 'vi']:
                 logger.info(f"Skipping content due to invalid language code for URL: {response.url}")
                 return
+            logger.warning(f"Using language code from URL ({language_code}) due to detection failure")
         
+        # Final validation before yielding item
+        if language_code not in ['zh', 'vi']:
+            logger.info(f"Skipping content with invalid language code: {language_code} for URL: {response.url}")
+            return
+            
+        if not title or not content:
+            logger.warning(f"Missing title or content for URL: {response.url}")
+            return
+            
         # Lấy date
         date_selector = selectors.get('date', 'span.date, div.time, div.date, time')
         date = None
@@ -644,12 +658,7 @@ class NewsSpider(scrapy.Spider):
             
         date = self.clean_text(date)
         
-        # Final check - only yield if language is zh or vi
-        if language_code not in ['zh', 'vi']:
-            logger.info(f"Skipping content with invalid language code: {language_code} for URL: {response.url}")
-            return
-            
-        # Tạo item
+        # Tạo item với thông tin ngôn ngữ đầy đủ
         item = {
             'url': response.url,
             'title': title,
@@ -664,11 +673,12 @@ class NewsSpider(scrapy.Spider):
                 'keywords': self.extract_meta_content(response, 'keywords'),
                 'language': self.extract_meta_content(response, 'language'),
                 'robots': self.extract_meta_content(response, 'robots'),
-                'detected_language': detected_lang  # Store detected language in meta for reference
+                'detected_language': detected_lang,  # Store detected language in meta
+                'language_detection_confidence': 'high' if detected_lang == language_code else 'medium'
             }
         }
         
-        logger.info(f"Crawl successful: {response.url} - Language: {language_code}")
+        logger.info(f"Crawl successful: {response.url} - Language: {language_code} - Confidence: {item['meta']['language_detection_confidence']}")
         yield item
 
     def closed(self, reason):
