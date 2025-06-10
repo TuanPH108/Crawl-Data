@@ -165,20 +165,19 @@ def main():
     logger.info("Created logs directory")
     
     list_urls_vi = [
-        # "https://nhandan.vn/",
-        # "https://www.qdnd.vn/",
-        # "https://www.vietnamplus.vn/",
-        # "https://baochinhphu.vn/",
-        # "https://cand.com.vn/",
-        # "https://vovworld.vn/vi-VN.vov",
-        # "https://thoidai.com.vn/",
-        # "https://www.sggp.org.vn/",
+        "https://nhandan.vn/",
+        "https://www.qdnd.vn/",
+        "https://www.vietnamplus.vn/",
+        "https://baochinhphu.vn/",
+        "https://cand.com.vn/",
+        "https://vovworld.vn/vi-VN.vov",
+        "https://thoidai.com.vn/",
+        "https://www.sggp.org.vn/",
     ]
     list_urls_zh = [
         "https://cn.nhandan.vn/",
         "https://cn.qdnd.vn/",
         "https://zh.vietnamplus.vn/",
-        "https://zh.vietnamplus.vn/topic/tp-164.vnp",
         "https://cn.baochinhphu.vn/",
         "https://cn.cand.com.vn/",
         "https://vovworld.vn/zh-CN.vov",

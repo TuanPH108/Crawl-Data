@@ -34,15 +34,19 @@ class LanguageDetectPipeline:
             elif lang in ['zh-cn', 'zh-tw', 'zh']:
                 item['language'] = 'zh'
             else:
-                item['language'] = lang
+                # Skip non-zh/vi content
+                pipeline_logger.info(f"Skipping non-zh/vi content for URL: {item.get('url')} - Detected language: {lang}")
+                raise DropItem(f"Non-zh/vi content detected: {lang}")
         except Exception as e:
-            item['language'] = 'unknown'
+            if isinstance(e, DropItem):
+                raise
             pipeline_logger.error(json.dumps({
                 'url': item.get('url', 'unknown'),
                 'error_type': 'lỗi_phát_hiện_ngôn_ngữ',
                 'error_message': str(e),
                 'timestamp': datetime.utcnow().isoformat()
             }, ensure_ascii=False))
+            raise DropItem(f"Language detection failed: {str(e)}")
         return item
 
 class MongoDBPipeline:
@@ -102,11 +106,16 @@ class MongoDBPipeline:
             pipeline_logger.error(json.dumps(error_info, ensure_ascii=False))
 
     def process_item(self, item, spider):
+        # Only process items with language 'zh' or 'vi'
+        if item.get('language') not in ['zh', 'vi']:
+            self.logger.info(f"Skipping document with invalid language: {item.get('language')} for URL: {item.get('url')}")
+            raise DropItem(f"Invalid language: {item.get('language')}")
+
         item['crawl_status'] = 'success'
         item['crawl_time'] = datetime.utcnow()
         try:
             # Check required fields
-            required_fields = ['url', 'title', 'content']
+            required_fields = ['url', 'title', 'content', 'language']
             for field in required_fields:
                 if not item.get(field):
                     error_msg = f"Missing required field: {field}"
@@ -116,6 +125,7 @@ class MongoDBPipeline:
                         'url': item.get('url', 'unknown'),
                         'title': item.get('title', 'unknown'),
                         'domain': item.get('domain', 'unknown'),
+                        'language': item.get('language', 'unknown'),
                         'timestamp': datetime.utcnow().isoformat()
                     }, ensure_ascii=False))
                     item['crawl_status'] = 'failed'
@@ -128,7 +138,7 @@ class MongoDBPipeline:
             try:
                 # Add new with validation
                 result = self.collection.insert_one(dict(item))
-                pipeline_logger.info(f"Added new document - URL: {item['url']} - ObjectId: {result.inserted_id}")
+                pipeline_logger.info(f"Added new document - URL: {item['url']} - Language: {item['language']} - ObjectId: {result.inserted_id}")
             except DuplicateKeyError:
                 # Update if URL exists
                 result = self.collection.update_one(
@@ -137,7 +147,7 @@ class MongoDBPipeline:
                 )
                 # Get the document to log its _id
                 doc = self.collection.find_one({'url': item['url']})
-                pipeline_logger.info(f"Updated document - URL: {item['url']} - ObjectId: {doc['_id'] if doc else 'unknown'}")
+                pipeline_logger.info(f"Updated document - URL: {item['url']} - Language: {item['language']} - ObjectId: {doc['_id'] if doc else 'unknown'}")
             
             return item
             
@@ -149,6 +159,7 @@ class MongoDBPipeline:
                 'url': item.get('url', 'unknown'),
                 'title': item.get('title', 'unknown'),
                 'domain': item.get('domain', 'unknown'),
+                'language': item.get('language', 'unknown'),
                 'timestamp': datetime.utcnow().isoformat()
             }, ensure_ascii=False))
             item['crawl_status'] = 'failed'
@@ -163,6 +174,7 @@ class MongoDBPipeline:
                 'url': item.get('url', 'unknown'),
                 'title': item.get('title', 'unknown'),
                 'domain': item.get('domain', 'unknown'),
+                'language': item.get('language', 'unknown'),
                 'timestamp': datetime.utcnow().isoformat()
             }, ensure_ascii=False))
             item['crawl_status'] = 'failed'

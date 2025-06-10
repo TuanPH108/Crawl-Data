@@ -412,18 +412,15 @@ class NewsSpider(scrapy.Spider):
             # Remove special characters from start and end
             hostname = re.sub(r'^[^a-z0-9]+|[^a-z0-9]+$', '', hostname)
             
-            # Handle special cases
+            # Handle special cases for VOV World
             if 'vovworld.vn' in hostname:
-                if '/zh-CN.vov' or 'zh-CN'in url:
+                if '/zh-CN.vov' in url or 'zh-CN' in url:
                     return 'vovworld.vn', 'zh'
-                elif '/vi-VN.vov' or 'vi-VN' in url:
+                elif '/vi-VN.vov' in url or 'vi-VN' in url:
                     return 'vovworld.vn', 'vi'
-                    
-            if 'vnanet.vn' in hostname:
-                if '/zh/' in url:
-                    return 'vnanet.vn', 'zh'
-                elif '/vi/' in url:
-                    return 'vnanet.vn', 'vi'
+                else:
+                    # Default to Vietnamese for VOV World if no language specified
+                    return 'vovworld.vn', 'vi'
                     
             if 'thoidai.com.vn' in hostname:
                 if 'shidai.' in hostname:
@@ -489,11 +486,34 @@ class NewsSpider(scrapy.Spider):
         if not domain:
             logger.error(f"Could not normalize domain for URL: {response.url}")
             return
+
+        # Check URL for language indicators first
+        if 'vovworld.vn' in domain:
+            if '/en-US.vov' in response.url:
+                logger.info(f"Skipping English content for VOV World URL: {response.url}")
+                return
+            elif '/zh-CN.vov' in response.url:
+                language_code = 'zh'
+            elif '/vi-VN.vov' in response.url:
+                language_code = 'vi'
+            else:
+                # For VOV World without language in URL, we'll check content later
+                pass
+        elif 'vnanet.vn' in domain:
+            if '/en/' in response.url:
+                logger.info(f"Skipping English content for VNA URL: {response.url}")
+                return
+            elif '/zh/' in response.url:
+                language_code = 'zh'
+            elif '/vi/' in response.url:
+                language_code = 'vi'
+            else:
+                language_code = 'vi'  # Default to Vietnamese for VNA
             
         # Get selector key and log for debugging
         selector_key = self.get_selector_key(domain, language_code)
         logger.info(f"Processing URL: {response.url}")
-        logger.info(f"Normalized domain: {domain}, Language code: {language_code}")
+        logger.info(f"Normalized domain: {domain}, Initial language code: {language_code}")
         logger.info(f"Selector key: {selector_key}")
         
         selectors = self.selector_map.get(selector_key, {})
@@ -562,20 +582,33 @@ class NewsSpider(scrapy.Spider):
             # Map detected language to expected format
             if detected_lang in ['zh-cn', 'zh-tw']:
                 detected_lang = 'zh'
+            elif detected_lang == 'en':
+                logger.info(f"Skipping English content for URL: {response.url}")
+                return
                 
-            # For VOV World, trust the URL path more than language detection
-            if 'vovworld.vn' in domain:
-                if '/vi-VN.vov' in response.url:
-                    language_code = 'vi'
-                elif '/zh-CN.vov' in response.url:
-                    language_code = 'zh'
-            # For other domains, only warn about language mismatch but don't drop the article
-            elif detected_lang != language_code:
+            # Final language check - only accept zh or vi
+            if detected_lang not in ['zh', 'vi']:
+                logger.info(f"Skipping non-zh/vi content for URL: {response.url}")
+                return
+                
+            # Update language code based on detection if needed
+            if language_code not in ['zh', 'vi']:
+                language_code = detected_lang
+            elif language_code != detected_lang:
                 logger.warning(f"Language mismatch for {response.url}: detected {detected_lang}, expected {language_code}")
+                # Trust the detected language if it's zh or vi
+                if detected_lang in ['zh', 'vi']:
+                    language_code = detected_lang
+                else:
+                    logger.info(f"Skipping content due to language mismatch for URL: {response.url}")
+                    return
             
         except LangDetectException as e:
             logger.error(f"Language detection failed for {response.url}: {str(e)}")
-            # Don't return here, continue processing with the language code from URL
+            # Only proceed if we have a valid language code from URL
+            if language_code not in ['zh', 'vi']:
+                logger.info(f"Skipping content due to invalid language code for URL: {response.url}")
+                return
         
         # Lấy date
         date_selector = selectors.get('date', 'span.date, div.time, div.date, time')
@@ -611,6 +644,11 @@ class NewsSpider(scrapy.Spider):
             
         date = self.clean_text(date)
         
+        # Final check - only yield if language is zh or vi
+        if language_code not in ['zh', 'vi']:
+            logger.info(f"Skipping content with invalid language code: {language_code} for URL: {response.url}")
+            return
+            
         # Tạo item
         item = {
             'url': response.url,
@@ -618,7 +656,7 @@ class NewsSpider(scrapy.Spider):
             'content': content,
             'date': date,
             'domain': domain,
-            'language': language_code,  # Use the language code from URL path
+            'language': language_code,  # This will be either 'zh' or 'vi'
             'crawled_at': datetime.now().isoformat(),
             'task_id': self.task_id,
             'meta': {
