@@ -111,13 +111,11 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
     depends_on:
-      rabbitmq:
-        condition: service_healthy
       mongodb:
         condition: service_healthy
     networks:
       - crawler_network
-    command: celery -A celery_app:celery_app worker --loglevel=info -Q scraper_queue -c 8 -P eventlet --without-gossip --without-mingle --without-heartbeat --time-limit=3600 --soft-time-limit=3000
+   
     volumes:
       - scraper_logs:/app/logs
     working_dir: /app
@@ -135,13 +133,11 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
     depends_on:
-      rabbitmq:
-        condition: service_healthy
       mongodb:
         condition: service_healthy
     networks:
       - crawler_network
-    command: celery -A celery_app:celery_app worker --loglevel=info -Q scraper_queue -c 8 -P eventlet --without-gossip --without-mingle --without-heartbeat --time-limit=3600 --soft-time-limit=3000
+   
     volumes:
       - scraper_logs:/app/logs
     working_dir: /app
@@ -159,13 +155,11 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app
     depends_on:
-      rabbitmq:
-        condition: service_healthy
       mongodb:
         condition: service_healthy
     networks:
       - crawler_network
-    command: celery -A celery_app:celery_app worker --loglevel=info -Q scraper_queue -c 8 -P eventlet --without-gossip --without-mingle --without-heartbeat --time-limit=3600 --soft-time-limit=3000
+   
     volumes:
       - scraper_logs:/app/logs
     working_dir: /app

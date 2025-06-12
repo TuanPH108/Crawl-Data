@@ -168,10 +168,10 @@ def main():
         # "https://nhandan.vn/",
         # "https://www.vietnamplus.vn/",
         # "https://baochinhphu.vn/",
-        "https://cand.com.vn/",
+        # "https://cand.com.vn/",
         "https://vovworld.vn/vi-VN.vov",
         "https://thoidai.com.vn/",
-        "https://www.sggp.org.vn/",
+        # "https://www.sggp.org.vn/",
     ]
     list_urls_zh = [
         # "https://cn.nhandan.vn/",

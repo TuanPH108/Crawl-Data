@@ -22,19 +22,9 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create logs directory and set permissions
-RUN mkdir -p /app/logs && \
-    chown -R celery:celery /app
-
-# Make wait-for-rabbitmq.sh executable
-RUN chmod +x wait-for-rabbitmq.sh
+RUN mkdir -p /app/logs
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672/
 ENV C_FORCE_ROOT=1
-
-# Switch to non-root user
-USER celery
-
-# Default command
-CMD ["celery", "-A", "tasks", "worker", "--loglevel=info", "-Q", "scraper_queue", "-P", "eventlet", "--concurrency=8"]
