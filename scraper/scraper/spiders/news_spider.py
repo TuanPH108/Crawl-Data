@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 class NewsSpider(scrapy.Spider):
     name = "news_spider"
     custom_settings = {
-        'DOWNLOAD_DELAY': 3,
-        'DEPTH_LIMIT': 10,
+        'DOWNLOAD_DELAY': 1,
+        'DEPTH_LIMIT':6,
         'DEPTH_PRIORITY': 2,
         'DEPTH_STATS': True,
         'DEPTH_STATS_VERBOSE': True,
@@ -44,33 +44,29 @@ class NewsSpider(scrapy.Spider):
         'RETRY_HTTP_CODES': [500, 502, 503, 504, 522, 524, 408, 429, 403, 111],
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'LOG_LEVEL': 'WARNING',
-        'LOG_STDOUT': False,     # Không log ra stdout
-        'LOG_FILE': 'logs/spider.log',  # Log vào file
+        'LOG_STDOUT': False, 
+        'LOG_FILE': 'logs/spider.log',
         'COOKIES_ENABLED': True,
-        'DOWNLOAD_TIMEOUT': 300,  # Increased from 180 to 300 seconds
-        'CONCURRENT_REQUESTS': 8,
-        'CONCURRENT_REQUESTS_PER_DOMAIN': 4,
+        'DOWNLOAD_TIMEOUT': 300, 
+        'CONCURRENT_REQUESTS': 32,
+        'CONCURRENT_REQUESTS_PER_DOMAIN': 16,
         'REDIRECT_ENABLED': True,
         'REDIRECT_MAX_TIMES': 5,
         'REDIRECT_PRIORITY_ADJUST': 1,
-        'CLOSESPIDER_TIMEOUT': 14400,  # Increased from 7200 to 14400 seconds (4 hours)
-        'CLOSESPIDER_ITEMCOUNT': 100000,
-        'CLOSESPIDER_PAGECOUNT': 100000,
+        'CLOSESPIDER_TIMEOUT': 36000,
+        # 'CLOSESPIDER_ITEMCOUNT': 100000,
+        # 'CLOSESPIDER_PAGECOUNT': 100000,
         'CLOSESPIDER_ERRORCOUNT': 100,
         'MEMUSAGE_ENABLED': True,
-        'MEMUSAGE_LIMIT_MB': 2048,
-        'MEMUSAGE_WARNING_MB': 768,
-        'REACTOR_THREADPOOL_MAXSIZE': 8,
+        # 'MEMUSAGE_LIMIT_MB': 4096,
+        # 'MEMUSAGE_WARNING_MB': 1536,
+        'REACTOR_THREADPOOL_MAXSIZE': 32,
         'DNS_TIMEOUT': 30,
         'DOWNLOAD_MAXSIZE': 10485760,
         'DOWNLOAD_WARNSIZE': 5242880,
         'AJAXCRAWL_ENABLED': True,
         'ROBOTSTXT_OBEY': True,
-        'HTTPCACHE_ENABLED': True,
-        'HTTPCACHE_EXPIRATION_SECS': 3600,
-        'HTTPCACHE_DIR': 'httpcache',
-        'HTTPCACHE_IGNORE_HTTP_CODES': [500, 502, 503, 504, 522, 524, 408, 429, 403],
-        'HTTPCACHE_STORAGE': 'scrapy.extensions.httpcache.FilesystemCacheStorage'
+        'HTTPCACHE_ENABLED': False,
     }
 
     selector_map = {
@@ -139,7 +135,7 @@ class NewsSpider(scrapy.Spider):
         },
         'vovworld.vn/zh-CN.vov': {
             'title': 'h1, h1.title, h1, h1.article-title.mb-0',
-            'content': 'div.article__body.cms-body div, div.article__body.cms-body p',
+            'content': '#cms-main-article > div.article__body.cms-body p, div.article__body.cms-body p, #cms-main-article > div.article__body.cms-body',
             'date': 'span.time, div.date, div.time, div.col-md-4.mb-2'
         },
         'shidai.thoidai.com.vn': {

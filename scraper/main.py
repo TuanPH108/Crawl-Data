@@ -166,23 +166,22 @@ def main():
     
     list_urls_vi = [
         # "https://nhandan.vn/",
-        # "https://www.qdnd.vn/",
         # "https://www.vietnamplus.vn/",
         # "https://baochinhphu.vn/",
-        # "https://cand.com.vn/",
-        # "https://vovworld.vn/vi-VN.vov",
-        # "https://thoidai.com.vn/",
-        # "https://www.sggp.org.vn/",
+        "https://cand.com.vn/",
+        "https://vovworld.vn/vi-VN.vov",
+        "https://thoidai.com.vn/",
+        "https://www.sggp.org.vn/",
     ]
     list_urls_zh = [
-        "https://cn.nhandan.vn/",
-        "https://cn.qdnd.vn/",
-        "https://zh.vietnamplus.vn/",
-        "https://cn.baochinhphu.vn/",
-        "https://cn.cand.com.vn/",
-        "https://vovworld.vn/zh-CN.vov",
-        "https://shidai.thoidai.com.vn/",
-        "https://cn.sggp.org.vn/",
+        # "https://cn.nhandan.vn/",
+        # "https://cn.qdnd.vn/",
+        # "https://zh.vietnamplus.vn/",
+        # "https://cn.baochinhphu.vn/",
+        # "https://cn.cand.com.vn/",
+        # "https://vovworld.vn/zh-CN.vov",
+        # "https://shidai.thoidai.com.vn/",
+        # "https://cn.sggp.org.vn/",
     ]
     
     logger.info(f"Total Vietnamese URLs: {len(list_urls_vi)}")
@@ -244,7 +243,7 @@ def main():
         logger.info("Waiting for all crawlers to complete...")
         for p in processes:
             try:
-                p.join(timeout=14400)  # 4 hours timeout per process
+                p.join(timeout=36000)  # 10 hours timeout per process
                 if p.is_alive():
                     logger.warning(f"Process {p.name} timed out, terminating...")
                     p.terminate()
@@ -277,6 +276,8 @@ def main():
                     pass
         
         logger.info("All crawling processes completed or terminated")
+        logger.info("Terminated at")
+        logger.info(datetime.now())
 
 if __name__ == '__main__':
     try:
